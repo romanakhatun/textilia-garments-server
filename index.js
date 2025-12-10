@@ -19,6 +19,7 @@ async function run() {
     const db = client.db("textila_db");
 
     const users = db.collection("users");
+    const products = db.collection("products");
 
     // -----------------------------
     // USER APIS
@@ -89,6 +90,65 @@ async function run() {
       res.send(user || {});
     });
 
+    // -----------------------------
+    // PRODUCT APIS
+    // -----------------------------
+
+    // Add Product (Manager Only)
+    app.post("/products", async (req, res) => {
+      const p = req.body;
+
+      p.createdAt = new Date();
+      p.showOnHome = Boolean(p.showOnHome);
+
+      const result = await products.insertOne(p);
+      res.send(result);
+    });
+
+    // Get All Products
+    app.get("/products", async (req, res) => {
+      const result = await products.find().sort({ createdAt: -1 }).toArray();
+      res.send(result);
+    });
+
+    // Get Home Products (limit = 6)
+    app.get("/products/home", async (req, res) => {
+      const result = await products
+        .find({ showOnHome: true })
+        .limit(6)
+        .toArray();
+
+      res.send(result);
+    });
+
+    // Get Product by ID
+    app.get("/products/:id", async (req, res) => {
+      const result = await products.findOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+
+    // Update Product (Admin or Manager)
+    app.patch("/products/:id", async (req, res) => {
+      const id = req.params.id;
+      const body = req.body;
+
+      const result = await products.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: body }
+      );
+
+      res.send(result);
+    });
+
+    // Delete Product
+    app.delete("/products/:id", async (req, res) => {
+      const result = await products.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
     // -----------------------------
     // DEFAULT
     // -----------------------------
