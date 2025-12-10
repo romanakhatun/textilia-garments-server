@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nbrbbe5.mongodb.net/?appName=Cluster0`;
 
 const client = new MongoClient(uri, {
   serverApi: { version: ServerApiVersion.v1, strict: true },
@@ -16,13 +16,9 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // await client.connect();
-
     const db = client.db("textila_db");
 
     const users = db.collection("users");
-    const products = db.collection("products");
-    const orders = db.collection("orders");
-    const tracking = db.collection("tracking");
 
     // -----------------------------
     // USER APIS
@@ -49,20 +45,39 @@ async function run() {
       res.send(result);
     });
 
-    // Update User Role or Suspend
-    app.patch("/users/:id", async (req, res) => {
+    // Update Role (Only Admin)
+    app.patch("/users/:id/role", async (req, res) => {
       const id = req.params.id;
-      const body = req.body;
+      const { role } = req.body;
 
       const result = await users.updateOne(
         { _id: new ObjectId(id) },
-        {
-          $set: {
-            role: body.role,
-            status: body.status,
-            suspendReason: body.suspendReason || "",
-          },
-        }
+        { $set: { role } }
+      );
+
+      res.send(result);
+    });
+
+    // Update Approve User
+    app.patch("/users/:id/approve", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await users.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "approved", suspendReason: "" } }
+      );
+
+      res.send(result);
+    });
+
+    // Update Suspend User (Only Admin)
+    app.patch("/users/:id/suspend", async (req, res) => {
+      const id = req.params.id;
+      const { reason } = req.body;
+
+      const result = await users.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "suspended", suspendReason: reason } }
       );
 
       res.send(result);
