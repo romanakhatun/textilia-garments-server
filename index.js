@@ -20,6 +20,8 @@ async function run() {
 
     const users = db.collection("users");
     const products = db.collection("products");
+    const orders = db.collection("orders");
+    const tracking = db.collection("tracking");
 
     // -----------------------------
     // USER APIS
@@ -149,6 +151,82 @@ async function run() {
       });
       res.send(result);
     });
+
+    // -----------------------------
+    // ORDER APIS
+    // -----------------------------
+
+    // Create Order (Buyer)
+    app.post("/orders", async (req, res) => {
+      const order = req.body;
+
+      order.status = "pending";
+      order.createdAt = new Date();
+
+      const result = await orders.insertOne(order);
+      res.send(result);
+    });
+
+    // Get Orders by User Email
+    app.get("/orders/user/:email", async (req, res) => {
+      const result = await orders
+        .find({ email: req.params.email })
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    // Get All Orders (Admin Only)
+    app.get("/orders", async (req, res) => {
+      const result = await orders.find().sort({ createdAt: -1 }).toArray();
+      res.send(result);
+    });
+
+    // Approve / Reject Order (Manager)
+    app.patch("/orders/:id/status", async (req, res) => {
+      const update = req.body;
+
+      const result = await orders.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: update }
+      );
+
+      res.send(result);
+    });
+
+    // Cancel Order (Buyer)
+    app.delete("/orders/:id", async (req, res) => {
+      const result = await orders.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
+      res.send(result);
+    });
+
+    // -----------------------------
+    // TRACKING APIS
+    // -----------------------------
+
+    // Add Tracking Step (Manager)
+    app.post("/tracking/:orderId", async (req, res) => {
+      const step = {
+        orderId: req.params.orderId,
+        ...req.body,
+        timestamp: new Date(),
+      };
+
+      const result = await tracking.insertOne(step);
+      res.send(result);
+    });
+
+    // Get Tracking Timeline
+    app.get("/tracking/:orderId", async (req, res) => {
+      const result = await tracking
+        .find({ orderId: req.params.orderId })
+        .sort({ timestamp: 1 })
+        .toArray();
+      res.send(result);
+    });
+
     // -----------------------------
     // DEFAULT
     // -----------------------------
