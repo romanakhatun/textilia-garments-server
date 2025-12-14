@@ -3,10 +3,41 @@ const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId, ServerApiVersion } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
+
+const admin = require("firebase-admin");
+
+// const serviceAccount = require("./textila-garment-firebase-admin-sdk.json");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
+const serviceAccount = JSON.parse(decoded);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 const port = process.env.PORT || 3000;
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const verifyFBToken = async (req, res, next) => {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+
+  try {
+    const idToken = token.split(" ")[1];
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    console.log("decoded in the token", decoded);
+    req.decoded_email = decoded.email;
+    next();
+  } catch (err) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nbrbbe5.mongodb.net/?appName=Cluster0`;
 
@@ -44,13 +75,13 @@ async function run() {
     });
 
     // All Users (Admin Only on Frontend)
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyFBToken, async (req, res) => {
       const result = await users.find().toArray();
       res.send(result);
     });
 
     // Update Role (Only Admin)
-    app.patch("/users/:id/role", async (req, res) => {
+    app.patch("/users/:id/role", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const { role } = req.body;
 
@@ -160,7 +191,7 @@ async function run() {
     // -----------------------------
 
     // Create Order (Buyer)
-    app.post("/orders", async (req, res) => {
+    app.post("/orders", verifyFBToken, async (req, res) => {
       const order = req.body;
 
       order.status = "pending";
@@ -171,12 +202,17 @@ async function run() {
     });
 
     // Get Order
-    app.get("/orders", async (req, res) => {
+    app.get("/orders", verifyFBToken, async (req, res) => {
       const query = {};
-      const { email } = req.query;
+      const { email, status } = req.query;
+
       if (email) {
         query.userEmail = email;
       }
+      if (status) {
+        query.status = status;
+      }
+
       const options = { sort: { createdAt: -1 } };
       const cursor = orders.find(query, options);
       const result = await cursor.toArray();
@@ -194,7 +230,7 @@ async function run() {
     });
 
     // Approve / Reject Order (Manager)
-    app.patch("/orders/:id/status", async (req, res) => {
+    app.patch("/orders/:id/status", verifyFBToken, async (req, res) => {
       const update = req.body;
 
       const result = await orders.updateOne(
@@ -251,7 +287,7 @@ async function run() {
       res.send({ url: session.url });
     });
 
-    app.post("/orders/confirm-payment", async (req, res) => {
+    app.post("/orders/confirm-payment", verifyFBToken, async (req, res) => {
       const { sessionId } = req.body;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
 
@@ -260,6 +296,7 @@ async function run() {
       }
       const order = {
         productId: session.metadata.productId,
+        productName: session.metadata.productName,
         userEmail: session.customer_email,
         quantity: Number(session.metadata.quantity),
         orderTotal: session.amount_total / 100,
