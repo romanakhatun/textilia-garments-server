@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ObjectId, ServerApiVersion } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const port = process.env.PORT || 3000;
 const app = express();
 app.use(cors());
@@ -125,9 +126,11 @@ async function run() {
 
     // Get Product by ID
     app.get("/products/:id", async (req, res) => {
-      const result = await products.findOne({
-        _id: new ObjectId(req.params.id),
-      });
+      const id = req.params.id;
+      const query = {
+        _id: new ObjectId(id),
+      };
+      const result = await products.findOne(query);
       res.send(result);
     });
 
@@ -167,18 +170,26 @@ async function run() {
       res.send(result);
     });
 
-    // Get Orders by User Email
-    app.get("/orders/user/:email", async (req, res) => {
-      const result = await orders
-        .find({ email: req.params.email })
-        .sort({ createdAt: -1 })
-        .toArray();
+    // Get Order
+    app.get("/orders", async (req, res) => {
+      const query = {};
+      const { email } = req.query;
+      if (email) {
+        query.userEmail = email;
+      }
+      const options = { sort: { createdAt: -1 } };
+      const cursor = orders.find(query, options);
+      const result = await cursor.toArray();
       res.send(result);
     });
 
-    // Get All Orders (Admin Only)
-    app.get("/orders", async (req, res) => {
-      const result = await orders.find().sort({ createdAt: -1 }).toArray();
+    // Get Order by ID
+    app.get("/orders/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = {
+        _id: new ObjectId(id),
+      };
+      const result = await orders.findOne(query);
       res.send(result);
     });
 
@@ -199,6 +210,65 @@ async function run() {
       const result = await orders.deleteOne({
         _id: new ObjectId(req.params.id),
       });
+      res.send(result);
+    });
+
+    // -----------------------------
+    // PAYMENT APIS
+    // -----------------------------
+
+    // Payment post
+    app.post("/payment-checkout-session", async (req, res) => {
+      const { productId, productName, price, quantity, userEmail } = req.body;
+      const amount = Math.round(price * 100); // unit price
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: amount,
+              product_data: {
+                name: productName,
+              },
+            },
+            quantity: Number(quantity), // dynamic quantity
+          },
+        ],
+
+        customer_email: userEmail,
+
+        metadata: {
+          productId,
+          quantity,
+          userEmail,
+        },
+
+        success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/payment-cancelled`,
+      });
+
+      res.send({ url: session.url });
+    });
+
+    app.post("/orders/confirm-payment", async (req, res) => {
+      const { sessionId } = req.body;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status !== "paid") {
+        return res.status(400).send({ message: "Payment not completed" });
+      }
+      const order = {
+        productId: session.metadata.productId,
+        userEmail: session.customer_email,
+        quantity: Number(session.metadata.quantity),
+        orderTotal: session.amount_total / 100,
+        paymentStatus: "Paid",
+        status: "pending",
+        createdAt: new Date(),
+      };
+
+      const result = await orders.insertOne(order);
       res.send(result);
     });
 
