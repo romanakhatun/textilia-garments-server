@@ -139,9 +139,14 @@ async function run() {
       res.send(result);
     });
 
-    // Get All Products
+    // Get All Products (admin and manager)
     app.get("/products", async (req, res) => {
-      const result = await products.find().sort({ createdAt: -1 }).toArray();
+      const email = req.query.email;
+
+      const result = await products
+        .find({ createdBy: email })
+        .sort({ createdAt: -1 })
+        .toArray();
       res.send(result);
     });
 
