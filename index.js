@@ -240,10 +240,23 @@ async function run() {
 
     // Approve / Reject Order (Manager)
     app.patch("/orders/:id/status", verifyFBToken, async (req, res) => {
-      const update = req.body;
+      const { status } = req.body;
+      const id = req.params.id;
+
+      const update = {
+        status,
+      };
+
+      if (status === "approved") {
+        update.approvedAt = new Date();
+      }
+
+      if (status === "rejected") {
+        update.rejectedAt = new Date();
+      }
 
       const result = await orders.updateOne(
-        { _id: new ObjectId(req.params.id) },
+        { _id: new ObjectId(id) },
         { $set: update }
       );
 
