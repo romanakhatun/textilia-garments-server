@@ -139,9 +139,18 @@ async function run() {
       res.send(result);
     });
 
-    // Get All Products
+    // Get All Products (admin)
     app.get("/products", async (req, res) => {
-      const result = await products.find().sort({ createdAt: -1 }).toArray();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { createdBy: email };
+      }
+
+      const result = await products
+        .find(query)
+        .sort({ createdAt: -1 })
+        .toArray();
       res.send(result);
     });
 
@@ -231,10 +240,23 @@ async function run() {
 
     // Approve / Reject Order (Manager)
     app.patch("/orders/:id/status", verifyFBToken, async (req, res) => {
-      const update = req.body;
+      const { status } = req.body;
+      const id = req.params.id;
+
+      const update = {
+        status,
+      };
+
+      if (status === "approved") {
+        update.approvedAt = new Date();
+      }
+
+      if (status === "rejected") {
+        update.rejectedAt = new Date();
+      }
 
       const result = await orders.updateOne(
-        { _id: new ObjectId(req.params.id) },
+        { _id: new ObjectId(id) },
         { $set: update }
       );
 
